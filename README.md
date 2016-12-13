@@ -1,5 +1,6 @@
 # arduino-serial-pacman
 Pacman running on an Arduino using serial VT100 as a display
+Inspired by https://github.com/dadecoza/ArduinoTermTetris
 
 I tried to replicate the gameplay of the original arcade game, including:
   - Grid layout

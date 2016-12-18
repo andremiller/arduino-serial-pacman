@@ -11,6 +11,7 @@ byte pacman_y = 26;
 byte pacman_direction = DIR_LEFT;
 byte pacman_planned_direction = DIR_LEFT;
 float pacman_speed = 0.8; // Percentage of base speed
+int ghost_eat_counter = 0; // Number of ghosts eaten per energizer
 unsigned long pacman_update_counter = 0; // How much time has elapsed since the laste position update for pacman
 long player_score = 0;
 long player_score_previous = -1;
@@ -21,6 +22,7 @@ int dots_eaten = 0;
 byte player_status = PLAYER_ALIVE;
 
 unsigned long scatter_chase_timer = 0;
+unsigned long fright_timer = 0;
 
 // The ghosts
 #define BLINKY 0
@@ -28,9 +30,15 @@ unsigned long scatter_chase_timer = 0;
 #define INKY   2
 #define CLYDE  3
 
+// Game modes
 #define CHASE   0
 #define SCATTER 1
 #define FRIGHT  2
+
+// Ghost status
+#define ACTIVE 3 // Ghost's normal mode while running maze
+#define EATEN  4 // Ghost has been eaten and is moving to home
+#define WAIT   5 // Ghost is waiting at home
 
 byte ghost_x[4];
 byte ghost_y[4];
@@ -41,6 +49,7 @@ byte ghost_target_x[4];
 byte ghost_target_y[4];
 byte ghost_scatter_target_x[4];
 byte ghost_scatter_target_y[4];
+byte ghost_status[4];
 unsigned long ghost_update_counter[4];
 byte ghost_mode;
 byte previous_ghost_mode = -1;
@@ -155,17 +164,17 @@ void init_playfield() {
       game_field[x][y] = pgm_read_byte(&game_field_init[y][x]);
     }
   }
-  
+
   // Set initial position of pacman
   pacman_x = 13;
   pacman_y = 26;
 }
 
 void get_ready() {
-  draw_set_pos2(18,20);
+  draw_set_pos2(18, 20);
   Serial.print("G E T   R E A D Y !");
   delay(2000);
-  draw_set_pos2(18,20);
+  draw_set_pos2(18, 20);
   Serial.print("                   ");
 }
 
@@ -184,6 +193,7 @@ void init_ghosts() {
   ghost_planned_direction[BLINKY] = DIR_LEFT;
   ghost_speed[BLINKY] = 0.75;
   ghost_update_counter[BLINKY] = 0;
+  ghost_status[BLINKY] = ACTIVE;
 
   // Pink Ghost
   ghost_x[PINKY] = 14;
@@ -196,6 +206,7 @@ void init_ghosts() {
   ghost_planned_direction[PINKY] = DIR_LEFT;
   ghost_speed[PINKY] = 0.75;
   ghost_update_counter[PINKY] = 0;
+  ghost_status[PINKY] = ACTIVE;
 
   // Blue Ghost
   ghost_x[INKY] = 14;
@@ -208,6 +219,7 @@ void init_ghosts() {
   ghost_planned_direction[INKY] = DIR_LEFT;
   ghost_speed[INKY] = 0.75;
   ghost_update_counter[INKY] = 0;
+  ghost_status[INKY] = ACTIVE;
 
   // Yellow Ghost
   ghost_x[CLYDE] = 14;
@@ -220,6 +232,8 @@ void init_ghosts() {
   ghost_planned_direction[CLYDE] = DIR_LEFT;
   ghost_speed[CLYDE] = 0.75;
   ghost_update_counter[CLYDE] = 0;
+  ghost_status[CLYDE] = ACTIVE;
+
 }
 
 void draw_clear_screen() {
@@ -301,6 +315,9 @@ void erase_ghost(byte ghost_number) {
       Serial.print("X");
       break;
   }
+  if (ghost_x[ghost_number] == pacman_x && ghost_y[ghost_number] == pacman_y) {
+    draw_pacman();
+  }
 }
 
 void move_ghost(byte ghost_number) {
@@ -328,13 +345,19 @@ void move_ghost(byte ghost_number) {
   // Draw ghost at ghost_x[ghost_number], ghost_y[ghost_number]
 
   draw_set_pos(ghost_x[ghost_number], ghost_y[ghost_number]);
-  Serial.print(ghost_number);
-  // Check for player collision
-  if (ghost_x[ghost_number] == pacman_x && ghost_y[ghost_number] == pacman_y) {
-    player_status = PLAYER_DEAD;
+
+  if (ghost_status[ghost_number] == EATEN) {
+    // Draw eaten ghosts differently
+    Serial.print('"');
+  }
+  else if (ghost_mode == FRIGHT) {
+    // Draw frightened ghosts differently
+    Serial.print(char(ghost_number + 65));
+  } else {
+    Serial.print(ghost_number);
   }
 
-
+  check_collision_ghost(ghost_number);
 
   /*
      draw_set_pos2(1, 36);
@@ -425,8 +448,22 @@ void move_ghost(byte ghost_number) {
   weight_down += !check_valid_move(next_x, next_y + 1) * 1000;
   weight_right += !check_valid_move(next_x + 1, next_y) * 1000;
 
-  // Set the ghost's target based on ghost type and current mode
-  switch (ghost_mode) {
+  int ghost_behaviour = ghost_mode; // Default to global ghost mode
+  if (ghost_status[ghost_number] == EATEN || ghost_status[ghost_number] == WAIT) {
+    ghost_behaviour = ghost_status[ghost_number];
+  }
+
+  // Set the ghost's target based on ghost type and current behaviour
+  switch (ghost_behaviour) {
+    case EATEN:
+      // Ghost is heading home
+      ghost_target_x[ghost_number] = 13;
+      ghost_target_y[ghost_number] = 14;
+      break;
+    case WAIT:
+      ghost_target_x[ghost_number] = 13;
+      ghost_target_y[ghost_number] = 14;
+      break;
     case SCATTER:
       // In scatter mode, all ghosts does the same thing, they try to get to their 'home' positions
       // exception for blinky.. who becomes Elroy
@@ -564,6 +601,34 @@ void move_ghost(byte ghost_number) {
 
 }
 
+void check_collision_ghost(int ghost_number) {
+  if (ghost_x[ghost_number] == pacman_x && ghost_y[ghost_number] == pacman_y) {
+    // There was a collision
+    if (ghost_mode == FRIGHT) {
+      // Player ate ghost
+      ghost_status[ghost_number] = EATEN;
+      ghost_eat_counter++;
+      player_score += 200 * ghost_eat_counter;
+    } else if (ghost_status[ghost_number] != ACTIVE) {
+      // Do nothing here, ghost has is eaten.
+    } else {
+      // Player died
+      player_status = PLAYER_DEAD;
+    }
+  }
+}
+
+void check_collision_all () {
+  for (int i = 0; i < 4; i++) {
+    check_collision_ghost(i);
+  }
+}
+
+void draw_pacman() {
+  draw_set_pos(pacman_x, pacman_y);
+  Serial.print("@");
+}
+
 void loop() {
 
   unsigned long currentMillis;
@@ -659,65 +724,90 @@ void loop() {
       // Erase from old position
       draw_set_pos(pacman_x, pacman_y);
       Serial.print(" ");
-      // Draw in new position
-      draw_set_pos(new_pacman_x, new_pacman_y);
-      Serial.print("@");
+
+
       pacman_x = new_pacman_x;
       pacman_y = new_pacman_y;
+      draw_pacman();
 
       // Handle various actions based on what is at the new location
       switch (game_field[pacman_x][pacman_y]) {
         case FIELD_EMPTY :
-          pacman_speed = 0.8; // Move faster in empty space
+          if (ghost_mode == FRIGHT) {
+            pacman_speed = 0.9;
+          } else {
+            pacman_speed = 0.8;
+          }
           break;
         case FIELD_DOT :
-          pacman_speed = 0.71; // Move slower while eating dots
+          // Move slower while eating dots
+          if (ghost_mode == FRIGHT) {
+            pacman_speed = 0.79;
+          } else {
+            pacman_speed = 0.71;
+          }
           game_field[pacman_x][pacman_y] = FIELD_EMPTY; // Eat the dot
           player_score += 10;
           dots_eaten++;
           break;
         case FIELD_ENERGIZER :
-          pacman_speed = 0.71; // Move slower while eating dots
+          //pacman_speed = 0.71;
           game_field[pacman_x][pacman_y] = FIELD_EMPTY; // Eat the energizer
           player_score += 50;
+          fright_timer = 6000;
+          ghost_eat_counter = 0;
           dots_eaten++;
           break;
       }
-      // Check for ghost collision
-      for (int i = 0; i < 4; i++) {
-        if (ghost_x[i] == pacman_x && ghost_y[i] == pacman_y) {
-          player_status = PLAYER_DEAD;
-        }
-      }
+      check_collision_all(); // Check collision for all ghosts
     }
   }
 
-  // Set ghost's mode
-
-  scatter_chase_timer += elapsedMillis;
-  if (scatter_chase_timer < 7000) {
-    ghost_mode = SCATTER;
-  } else if (scatter_chase_timer < 27000) {
-    ghost_mode = CHASE;
-  } else if (scatter_chase_timer < 34000) {
-    ghost_mode = SCATTER;
-  } else if (scatter_chase_timer < 54000) {
-    ghost_mode = CHASE;
-  } else if (scatter_chase_timer < 59000) {
-    ghost_mode = SCATTER;
-  } else if (scatter_chase_timer < 79000) {
-    ghost_mode = CHASE;
-  } else if (scatter_chase_timer < 84000) {
-    ghost_mode = SCATTER;
+  // Handle fright timer
+  if (fright_timer > elapsedMillis) {
+    fright_timer -= elapsedMillis;
   } else {
-    ghost_mode = CHASE;
+    fright_timer = 0;
   }
 
+  // Set ghost's mode
+  if (fright_timer > 0) {
+    ghost_mode = FRIGHT;
+  } else {
+    scatter_chase_timer += elapsedMillis;
+    if (scatter_chase_timer < 7000) {
+      ghost_mode = SCATTER;
+    } else if (scatter_chase_timer < 27000) {
+      ghost_mode = CHASE;
+    } else if (scatter_chase_timer < 34000) {
+      ghost_mode = SCATTER;
+    } else if (scatter_chase_timer < 54000) {
+      ghost_mode = CHASE;
+    } else if (scatter_chase_timer < 59000) {
+      ghost_mode = SCATTER;
+    } else if (scatter_chase_timer < 79000) {
+      ghost_mode = CHASE;
+    } else if (scatter_chase_timer < 84000) {
+      ghost_mode = SCATTER;
+    } else {
+      ghost_mode = CHASE;
+    }
+  }
 
   if (ghost_mode != previous_ghost_mode) {
     // Ghost mode changed
     draw_set_pos2(20, 34);
-    reverse_ghosts(); // Reverse direction when mode changes
+    if (previous_ghost_mode != FRIGHT) {
+      reverse_ghosts(); // Reverse direction when mode changes, unless changing out of fright
+    }
+    // Set ghost speed
+    for (int i = 0; i < 4; i++) {
+      if (ghost_mode == FRIGHT) {
+        ghost_speed[i] = 0.5;
+      } else {
+        ghost_speed[i] = 0.75;
+      }
+    }
     switch (ghost_mode) {
       case CHASE   : Serial.print("CHASE  "); break;
       case SCATTER : Serial.print("SCATTER"); break;
@@ -741,7 +831,7 @@ void loop() {
   // Handle death
   if (player_status == PLAYER_DEAD) {
     // Erase ghosts
-    for (int i=0; i<4; i++) {
+    for (int i = 0; i < 4; i++) {
       erase_ghost(i);
     }
     draw_set_pos(pacman_x, pacman_y);
@@ -799,7 +889,7 @@ void loop() {
     Serial.print("]");
     draw_set_pos2(20, 35);
     Serial.print("[");
-    Serial.print(scatter_chase_timer/1000);
+    Serial.print(scatter_chase_timer / 1000);
     Serial.print("]     ");
     TPS = 0;
   }

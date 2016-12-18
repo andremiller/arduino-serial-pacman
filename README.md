@@ -10,7 +10,7 @@ I tried to replicate the gameplay of the original arcade game, including:
   - Can press the button before reaching an intersection to pre-empt turning
   
 This is still a work in progress, and right now at least the following major things are not working:
-- Eating Energizers does nothing, so you can't eat the ghosts and they don't go into frightened mode
+- Ghosts that you eat can't enter home, so once eaten they don't respawn
 - Eating all the dots does not advance the level, so you can't win the game
 - Dying does not cause you to lose a life, so you can't lose the game
 - The tunnel does not transport you to the other side

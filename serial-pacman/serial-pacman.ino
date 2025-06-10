@@ -264,10 +264,6 @@ void draw_score() {
   if (player_score != player_score_previous) {
     draw_set_pos2(16, 0);
     Serial.print(player_score);
-    Serial.print(" : ");
-    Serial.print(dots_eaten);
-    Serial.print(" : ");
-    Serial.print(total_dots);
     player_score_previous = player_score;
     if (player_score > player_high_score) {
       player_high_score = player_score;

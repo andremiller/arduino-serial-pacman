@@ -9,54 +9,46 @@ I tried to replicate the gameplay of the original arcade game, including:
   - Ghost and Pacman speed
   - Can press the button before reaching an intersection to pre-empt turning
   
-This is still a work in progress, and right now at least the following major things are not working:
-- Ghosts that you eat can't enter home, so once eaten they don't respawn
-- Eating all the dots does not advance the level, so you can't win the game
-- Dying does not cause you to lose a life, so you can't lose the game
-- The tunnel does not transport you to the other side
+Things that are now working:
+- Ghosts that you eat can enter their home and respawn
+- Eating all the dots increases the level count
+- Dying causes you to lose a life and eventually game over
+- The tunnel transports you to the other side
+- High score is saved on EEPROM
 
 Upload the sketch to an Arduino (tested with UNO, but should work on other Arduino's too.
-The current version uses about 11KB of program space (out of a max of 32KB on the UNO) and 1.4KB of RAM (out of a max of 2KB on the UNO)
+On an UNO: Sketch uses 11494 bytes (35%) of program storage space. Maximum is 32256 bytes.
+Global variables use 1374 bytes (67%) of dynamic memory, leaving 674 bytes for local variables. Maximum is 2048 bytes.
 
 Use a terminal emulator such as PuTTY to connect at 9600 BAUD
 Use keys 'wasd' to move around
 
 # "Screenshot"
 
-          1 U P       H I G H   S C O R E
-               0                    0
-    
-    /=====================================================\
-    | . . . . . . . . . . . . \ / . . . . . . . . . . . . |
-    | . /-----\ . /-------\ . | | . /-------\ . /-----\ . |
-    | O |     | . |       | . | | . |       | . |     | O |
-    | . \-----/ . \-------/ . \ / . \-------/ . \-----/ . |
-    | . . . . . . . . . . . . . . . . . . . . . . . . . . |
-    | . /-----\ . /-\ . /-------------\ . /-\ . /-----\ . |
-    | . \-----/ . | | . \-----\ /-----/ . | | . \-----/ . |
-    | . . . . . . | | . . . . | | . . . . | | . . . . . . |
-    \=========\ . | \-----\   | |   /-----/ | . /=========/
-              | . | /-----/   \-/   \-----\ | . |
-              | . | |         0           | | . |
-              | . | |   /=====---=====\   | | . |
-    ==========/ . \-/   |             |   \-/ . \==========
-                .       |             |       .
-    ==========\ . /-\   |             |   /-\ . /==========
-              | . | |   \=============/   | | . |
-              | . | | G E T   R E A D Y ! | | . |
-              | . | |   /-------------\   | | . |
-    /=========/ . \-/   \-----\ /-----/   \-/ . \=========\
-    | . . . . . . . . . . . . | | . . . . . . . . . . . . |
-    | . /-----\ . /-------\ . | | . /-------\ . /-----\ . |
-    | . \---\ | . \-------/ . \-/ . \-------/ . | /---/ . |
-    | O . . | | . . . . . . .  @  . . . . . . . | | . . O |
-    |---\ . | | . /-\ . /-------------\ . /-\ . | | . /---|
-    |---/ . \-/ . | | . \-----\ /-----/ . | | . \-/ . \---|
-    | . . . . . . | | . . . . | | . . . . | | . . . . . . |
-    | . /---------/ \-----\ . | | . /-----/ \---------\ . |
-    | . \-----------------/ . \-/ . \-----------------/ . |
-    | . . . . . . . . . . . . . . . . . . . . . . . . . . |
-    \=====================================================/
+    S C O R E :                       H I G H : 25460
+    /=====================================================================\
+    | . . . . . . . . . . . . . . . . | | . . . . . . . . . . . . . . . . |
+    | . /-------\ . /-------------\ . | | . /-------------\ . /-------\ . |
+    | O \-------/ . \-------------/ . \-/ . \-------------/ . \-------/ O |
+    | . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . |
+    | . -=======- . /---\ . -=====================- . /---\ . -=======- . |
+    | . . . . . . . |   | . . . . . . | | . . . . . . |   | . . . . . . . |
+    \===========\ . |   |=========-   \-/   -=========|   | . /===========/
+                | . |   |                             |   | . |
+    ============/ . \---/   /=========   =========\   \---/ . \============
+                  .         |                     |         .
+    ============\ . /---\   \=====================/   /---\ . /============
+                | . |   |    P R E S S   A   K E Y    |   | . |
+    /===========/ . \---/   -=====================-   \---/ . \===========\
+    | . . . . . . . . . . . . . . . . | | . . . . . . . . . . . . . . . . |
+    | . -=======\ . -=============- . \-/ . -=============- . /=======- . |
+    | O . . . | | . . . . . . . . . .     . . . . . . . . . . | | . . . O |
+    |=====- . \-/ . /---\ . -=====================- . /---\ . \-/ . -=====|
+    | . . . . . . . |   | . . . . . . | | . . . . . . |   | . . . . . . . |
+    | . -=========================- . \-/ . -=========================- . |
+    | . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . |
+    \=====================================================================/
+    L I V E S : 3                     L E V E L :  1
 
 
 

@@ -1,3 +1,7 @@
+// Arduino PACMAN
+// https://github.com/andremiller/arduino-serial-pacman
+// 80x24 version
+
 #include <avr/pgmspace.h>
 
 #define DIR_RIGHT 0
@@ -7,7 +11,7 @@
 
 // Character positions
 byte pacman_x = 13;
-byte pacman_y = 26;
+byte pacman_y = 17;
 byte pacman_direction = DIR_LEFT;
 byte pacman_planned_direction = DIR_LEFT;
 float pacman_speed = 0.8; // Percentage of base speed
@@ -67,114 +71,70 @@ unsigned long TPS = 0; // How many game ticks there are per second (number of ti
 #define FIELD_DOT       2
 #define FIELD_ENERGIZER 3
 
-const char game_field_init[36][28] PROGMEM = { // Y, X - number of lines, number of columns
-  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0},
-  {0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0},
-  {0, 3, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 3, 0},
-  {0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0},
-  {0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0},
-  {0, 2, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 2, 0},
-  {0, 2, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 2, 0},
-  {0, 2, 2, 2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 2, 2, 0},
-  {0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-  {1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1},
-  {0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0},
-  {0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0},
-  {0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0},
-  {0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0},
-  {0, 3, 2, 2, 0, 0, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2, 2, 2, 2, 0, 0, 2, 2, 3, 0},
-  {0, 0, 0, 2, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 2, 0, 0, 0},
-  {0, 0, 0, 2, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 2, 0, 0, 0},
-  {0, 2, 2, 2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 2, 2, 0},
-  {0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0},
-  {0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0},
-  {0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0},
-  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-};
+char game_field[28][24]; // X, Y
 
-char game_field[28][36]; // X, Y
-
-const char game_background[36][55] PROGMEM = {
-  R"(      1 U P       H I G H   S C O R E                  )",
-  R"(           0                    0                      )",
+const char game_background[24][55] PROGMEM = {
   R"(                                                       )",
   R"(/=====================================================\)",
-  R"(| . . . . . . . . . . . . \ / . . . . . . . . . . . . |)",
-  R"(| . /-----\ . /-------\ . | | . /-------\ . /-----\ . |)",
-  R"(| O |     | . |       | . | | . |       | . |     | O |)",
-  R"(| . \-----/ . \-------/ . \ / . \-------/ . \-----/ . |)",
-  R"(| . . . . . . . . . . . . . . . . . . . . . . . . . . |)",
-  R"(| . /-----\ . /-\ . /-------------\ . /-\ . /-----\ . |)",
-  R"(| . \-----/ . | | . \-----\ /-----/ . | | . \-----/ . |)",
-  R"(| . . . . . . | | . . . . | | . . . . | | . . . . . . |)",
-  R"(\=========\ . | \-----\   | |   /-----/ | . /=========/)",
-  R"(          | . | /-----/   \-/   \-----\ | . |          )",
-  R"(          | . | |                     | | . |          )",
-  R"(          | . | |   /=====---=====\   | | . |          )",
-  R"(==========/ . \-/   |             |   \-/ . \==========)",
-  R"(            .       |             |       .            )",
-  R"(==========\ . /-\   |             |   /-\ . /==========)",
-  R"(          | . | |   \=============/   | | . |          )",
-  R"(          | . | |                     | | . |          )",
-  R"(          | . | |   /-------------\   | | . |          )",
-  R"(/=========/ . \-/   \-----\ /-----/   \-/ . \=========\)",
   R"(| . . . . . . . . . . . . | | . . . . . . . . . . . . |)",
   R"(| . /-----\ . /-------\ . | | . /-------\ . /-----\ . |)",
-  R"(| . \---\ | . \-------/ . \-/ . \-------/ . | /---/ . |)",
-  R"(| O . . | | . . . . . . .     . . . . . . . | | . . O |)",
-  R"(|---\ . | | . /-\ . /-------------\ . /-\ . | | . /---|)",
-  R"(|---/ . \-/ . | | . \-----\ /-----/ . | | . \-/ . \---|)",
+  R"(| O \-----/ . \-------/ . \-/ . \-------/ . \-----/ O |)",
+  R"(| . . . . . . . . . . . . . . . . . . . . . . . . . . |)",
+  R"(| . -=====- . /-\ . -=============- . /-\ . -=====- . |)",
   R"(| . . . . . . | | . . . . | | . . . . | | . . . . . . |)",
-  R"(| . /---------/ \-----\ . | | . /-----/ \---------\ . |)",
-  R"(| . \-----------------/ . \-/ . \-----------------/ . |)",
+  R"(\=========\ . | |=====-   \-/   -=====| | . /=========/)",
+  R"(          | . | |                     | | . |          )",
+  R"(==========/ . \-/   /=====---=====\   \-/ . \==========)",
+  R"(            .       |             |       .            )",
+  R"(==========\ . /-\   \=============/   /-\ . /==========)",
+  R"(          | . | |                     | | . |          )",
+  R"(/=========/ . \-/   -=============-   \-/ . \=========\)",
+  R"(| . . . . . . . . . . . . | | . . . . . . . . . . . . |)",
+  R"(| . -=====\ . -=======- . \-/ . -=======- . /=====- . |)",
+  R"(| O . . | | . . . . . . .     . . . . . . . | | . . O |)",
+  R"(|===- . \-/ . /-\ . -=============- . /-\ . \-/ . -===|)",
+  R"(| . . . . . . | | . . . . | | . . . . | | . . . . . . |)",
+  R"(| . -=================- . \-/ . -=================- . |)",
   R"(| . . . . . . . . . . . . . . . . . . . . . . . . . . |)",
   R"(\=====================================================/)",
-  R"(TPS:                                                   )",
   R"(                                                       )"
 };
 
 void draw_background() {
-  for (int y = 0; y < 36; y++) {
+  for (int y = 0; y < 24; y++) {
+    draw_set_pos(0, y);
     for (int x = 0; x < 55; x++) {
       char value = pgm_read_byte(&game_background[y][x]);
       Serial.print(value);
     }
-    Serial.println("");
+    //Serial.println("");
   }
 }
 
 void init_playfield() {
-  // Copies initial playfield from PGMSPACE to RAM
-  for (int y = 0; y < 36; y++) {
-    for (int x = 0; x < 28; x++ ) {
-      game_field[x][y] = pgm_read_byte(&game_field_init[y][x]);
+  // Build playfield from background pattern using character mapping
+  for (int y = 0; y < 24; y++) {
+    for (int x = 0; x < 28; x++) {
+      char bg_char = pgm_read_byte(&game_background[y][x * 2]);
+      switch(bg_char) {
+        case ' ': game_field[x][y] = FIELD_EMPTY; break;
+        case '.': game_field[x][y] = FIELD_DOT; break;
+        case 'O': game_field[x][y] = FIELD_ENERGIZER; break;
+        default:  game_field[x][y] = FIELD_BLOCKED; break;
+      }
     }
   }
 
   // Set initial position of pacman
   pacman_x = 13;
-  pacman_y = 26;
+  pacman_y = 17;
 }
 
 void get_ready() {
-  draw_set_pos2(18, 20);
+  draw_set_pos2(18, 13);
   Serial.print("G E T   R E A D Y !");
   delay(2000);
-  draw_set_pos2(18, 20);
+  draw_set_pos2(18, 13);
   Serial.print("                   ");
 }
 
@@ -184,7 +144,7 @@ void init_ghosts() {
 
   // Red Ghost
   ghost_x[BLINKY] = 14;
-  ghost_y[BLINKY] = 14;
+  ghost_y[BLINKY] = 9;
   ghost_scatter_target_x[BLINKY] = 25; // Third block from top right
   ghost_scatter_target_y[BLINKY] = 0;
   ghost_target_x[BLINKY] = ghost_scatter_target_x[BLINKY];
@@ -197,7 +157,7 @@ void init_ghosts() {
 
   // Pink Ghost
   ghost_x[PINKY] = 14;
-  ghost_y[PINKY] = 14;
+  ghost_y[PINKY] = 9;
   ghost_scatter_target_x[PINKY] = 2; // Third block from top left
   ghost_scatter_target_y[PINKY] = 0;
   ghost_target_x[PINKY] = ghost_scatter_target_x[PINKY];
@@ -210,9 +170,9 @@ void init_ghosts() {
 
   // Blue Ghost
   ghost_x[INKY] = 14;
-  ghost_y[INKY] = 14;
+  ghost_y[INKY] = 9;
   ghost_scatter_target_x[INKY] = 27; // Bottom right
-  ghost_scatter_target_y[INKY] = 35;
+  ghost_scatter_target_y[INKY] = 23;
   ghost_target_x[INKY] = ghost_scatter_target_x[INKY];
   ghost_target_y[INKY] = ghost_scatter_target_y[INKY];
   ghost_direction[INKY] = DIR_LEFT;
@@ -223,9 +183,9 @@ void init_ghosts() {
 
   // Yellow Ghost
   ghost_x[CLYDE] = 14;
-  ghost_y[CLYDE] = 14;
+  ghost_y[CLYDE] = 9;
   ghost_scatter_target_x[CLYDE] = 0; // Bottom left
-  ghost_scatter_target_y[CLYDE] = 35;
+  ghost_scatter_target_y[CLYDE] = 23;
   ghost_target_x[CLYDE] = ghost_scatter_target_x[CLYDE];
   ghost_target_y[CLYDE] = ghost_scatter_target_y[CLYDE];
   ghost_direction[CLYDE] = DIR_LEFT;
@@ -242,7 +202,7 @@ void draw_clear_screen() {
 
 void draw_score() {
   if (player_score != player_score_previous) {
-    draw_set_pos2(6, 1);
+    draw_set_pos2(6, 0);
     Serial.print(player_score);
     player_score_previous = player_score;
   }
@@ -360,7 +320,7 @@ void move_ghost(byte ghost_number) {
   check_collision_ghost(ghost_number);
 
   /*
-     draw_set_pos2(1, 36);
+     draw_set_pos2(1, 24);
     switch (ghost_direction[ghost_number]) {
      case DIR_UP :
        Serial.print("UP   |");
@@ -390,7 +350,7 @@ void move_ghost(byte ghost_number) {
     ghost_direction[ghost_number] = ghost_planned_direction[ghost_number];
   }
 
-  draw_set_pos2(1 + ghost_number * 3, 36);
+  draw_set_pos2(40 + ghost_number * 3, 23);
   Serial.print(ghost_direction[ghost_number]);
 
   /*
@@ -458,11 +418,11 @@ void move_ghost(byte ghost_number) {
     case EATEN:
       // Ghost is heading home
       ghost_target_x[ghost_number] = 13;
-      ghost_target_y[ghost_number] = 14;
+      ghost_target_y[ghost_number] = 9;
       break;
     case WAIT:
       ghost_target_x[ghost_number] = 13;
-      ghost_target_y[ghost_number] = 14;
+      ghost_target_y[ghost_number] = 9;
       break;
     case SCATTER:
       // In scatter mode, all ghosts does the same thing, they try to get to their 'home' positions
@@ -549,7 +509,7 @@ void move_ghost(byte ghost_number) {
   if (ghost_target_x[ghost_number] < 0) ghost_target_x[ghost_number] = 0;
   if (ghost_target_x[ghost_number] > 27) ghost_target_x[ghost_number] = 27;
   if (ghost_target_y[ghost_number] < 0) ghost_target_x[ghost_number] = 0;
-  if (ghost_target_y[ghost_number] > 35) ghost_target_x[ghost_number] = 35;
+  if (ghost_target_y[ghost_number] > 23) ghost_target_y[ghost_number] = 23;
 
   // Add vector weights based on target
   weight_up    += calc_distance(ghost_target_x[ghost_number], ghost_target_y[ghost_number], next_x, next_y - 1);
@@ -796,7 +756,7 @@ void loop() {
 
   if (ghost_mode != previous_ghost_mode) {
     // Ghost mode changed
-    draw_set_pos2(20, 34);
+    draw_set_pos2(30, 23);
     if (previous_ghost_mode != FRIGHT) {
       reverse_ghosts(); // Reverse direction when mode changes, unless changing out of fright
     }
@@ -855,7 +815,7 @@ void loop() {
     draw_set_pos(pacman_x, pacman_y);
     Serial.print(" ");
     pacman_x = 13;
-    pacman_y = 26;
+    pacman_y = 17;
     pacman_direction = DIR_LEFT;
     pacman_planned_direction = DIR_LEFT;
     player_status = PLAYER_ALIVE;
@@ -883,11 +843,11 @@ void loop() {
     if (TPS_update_counter >= 1000) {
       TPS = -1;
     }
-    draw_set_pos2(4, 34);
+    draw_set_pos2(4, 23);
     Serial.print("[");
     Serial.print(TPS);
     Serial.print("]");
-    draw_set_pos2(20, 35);
+    draw_set_pos2(20, 23);
     Serial.print("[");
     Serial.print(scatter_chase_timer / 1000);
     Serial.print("]     ");

@@ -3,14 +3,18 @@
 // 80x24 version
 
 #include <avr/pgmspace.h>
+#include <EEPROM.h>
 
 #define DIR_RIGHT 0
 #define DIR_DOWN  1
 #define DIR_LEFT  2
 #define DIR_UP    3
 
+// EEPROM address for high score storage
+#define EEPROM_HIGH_SCORE_ADDR 0
+
 // Character positions
-byte pacman_x = 13;
+byte pacman_x = 19;
 byte pacman_y = 17;
 byte pacman_direction = DIR_LEFT;
 byte pacman_planned_direction = DIR_LEFT;
@@ -19,16 +23,21 @@ int ghost_eat_counter = 0; // Number of ghosts eaten per energizer
 unsigned long pacman_update_counter = 0; // How much time has elapsed since the laste position update for pacman
 long player_score = 0;
 long player_score_previous = -1;
+long player_high_score = 0;
+long next_life_score = 10000; // Next score threshold for free life
 int level = 1;
 int dots_eaten = 0;
+int total_dots = 0;
 #define PLAYER_ALIVE 0
 #define PLAYER_DEAD 1
 byte player_status = PLAYER_ALIVE;
+int lives = 3;
 
 unsigned long scatter_chase_timer = 0;
 unsigned long fright_timer = 0;
 
-// The ghosts
+// The cast
+#define PACMAN  -1
 #define BLINKY 0
 #define PINKY  1
 #define INKY   2
@@ -54,6 +63,7 @@ byte ghost_target_y[4];
 byte ghost_scatter_target_x[4];
 byte ghost_scatter_target_y[4];
 byte ghost_status[4];
+unsigned long ghost_wait_timer[4];
 unsigned long ghost_update_counter[4];
 byte ghost_mode;
 byte previous_ghost_mode = -1;
@@ -71,81 +81,121 @@ unsigned long TPS = 0; // How many game ticks there are per second (number of ti
 #define FIELD_DOT       2
 #define FIELD_ENERGIZER 3
 
-char game_field[28][24]; // X, Y
+char game_field[38][24]; // X, Y
 
-const char game_background[24][55] PROGMEM = {
-  R"(                                                       )",
-  R"(/=====================================================\)",
-  R"(| . . . . . . . . . . . . | | . . . . . . . . . . . . |)",
-  R"(| . /-----\ . /-------\ . | | . /-------\ . /-----\ . |)",
-  R"(| O \-----/ . \-------/ . \-/ . \-------/ . \-----/ O |)",
-  R"(| . . . . . . . . . . . . . . . . . . . . . . . . . . |)",
-  R"(| . -=====- . /-\ . -=============- . /-\ . -=====- . |)",
-  R"(| . . . . . . | | . . . . | | . . . . | | . . . . . . |)",
-  R"(\=========\ . | |=====-   \-/   -=====| | . /=========/)",
-  R"(          | . | |                     | | . |          )",
-  R"(==========/ . \-/   /=====---=====\   \-/ . \==========)",
-  R"(            .       |             |       .            )",
-  R"(==========\ . /-\   \=============/   /-\ . /==========)",
-  R"(          | . | |                     | | . |          )",
-  R"(/=========/ . \-/   -=============-   \-/ . \=========\)",
-  R"(| . . . . . . . . . . . . | | . . . . . . . . . . . . |)",
-  R"(| . -=====\ . -=======- . \-/ . -=======- . /=====- . |)",
-  R"(| O . . | | . . . . . . .     . . . . . . . | | . . O |)",
-  R"(|===- . \-/ . /-\ . -=============- . /-\ . \-/ . -===|)",
-  R"(| . . . . . . | | . . . . | | . . . . | | . . . . . . |)",
-  R"(| . -=================- . \-/ . -=================- . |)",
-  R"(| . . . . . . . . . . . . . . . . . . . . . . . . . . |)",
-  R"(\=====================================================/)",
-  R"(                                                       )"
+const char game_background[24][76] PROGMEM = {
+  R"(    S C O R E :                       H I G H :                             )",
+  R"(    /=====================================================================\ )",
+  R"(    | . . . . . . . . . . . . . . . . | | . . . . . . . . . . . . . . . . | )",
+  R"(    | . /-------\ . /-------------\ . | | . /-------------\ . /-------\ . | )",
+  R"(    | O \-------/ . \-------------/ . \-/ . \-------------/ . \-------/ O | )",
+  R"(    | . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . | )",
+  R"(    | . -=======- . /---\ . -=====================- . /---\ . -=======- . | )",
+  R"(    | . . . . . . . |   | . . . . . . | | . . . . . . |   | . . . . . . . | )",
+  R"(    \===========\ . |   |=========-   \-/   -=========|   | . /===========/ )",
+  R"(                | . |   |                             |   | . |             )",
+  R"(    ============/ . \---/   /=========   =========\   \---/ . \============ )",
+  R"(                  .         |                     |         .               )",
+  R"(    ============\ . /---\   \=====================/   /---\ . /============ )",
+  R"(                | . |   |                             |   | . |             )",
+  R"(    /===========/ . \---/   -=====================-   \---/ . \===========\ )",
+  R"(    | . . . . . . . . . . . . . . . . | | . . . . . . . . . . . . . . . . | )",
+  R"(    | . -=======\ . -=============- . \-/ . -=============- . /=======- . | )",
+  R"(    | O . . . | | . . . . . . . . . .     . . . . . . . . . . | | . . . O | )",
+  R"(    |=====- . \-/ . /---\ . -=====================- . /---\ . \-/ . -=====| )",
+  R"(    | . . . . . . . |   | . . . . . . | | . . . . . . |   | . . . . . . . | )",
+  R"(    | . -=========================- . \-/ . -=========================- . | )",
+  R"(    | . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . | )",
+  R"(    \=====================================================================/ )",
+  R"(    L I V E S :                       L E V E L :                           )",
 };
+
 
 void draw_background() {
   for (int y = 0; y < 24; y++) {
     draw_set_pos(0, y);
-    for (int x = 0; x < 55; x++) {
+    for (int x = 0; x < 76; x++) {
       char value = pgm_read_byte(&game_background[y][x]);
       Serial.print(value);
     }
     //Serial.println("");
   }
+  draw_set_pos2(51, 24);
+  Serial.print(level);
+  draw_high_score();
 }
 
 void init_playfield() {
   // Build playfield from background pattern using character mapping
+  total_dots = 0;
+  dots_eaten = 0;
   for (int y = 0; y < 24; y++) {
-    for (int x = 0; x < 28; x++) {
+    for (int x = 0; x < 38; x++) {
       char bg_char = pgm_read_byte(&game_background[y][x * 2]);
       switch(bg_char) {
         case ' ': game_field[x][y] = FIELD_EMPTY; break;
-        case '.': game_field[x][y] = FIELD_DOT; break;
-        case 'O': game_field[x][y] = FIELD_ENERGIZER; break;
+        case '.': game_field[x][y] = FIELD_DOT; total_dots+=1; break;
+        case 'O': game_field[x][y] = FIELD_ENERGIZER; total_dots+=1; break;
         default:  game_field[x][y] = FIELD_BLOCKED; break;
       }
     }
   }
 
+  total_dots-=1; // Hack to remove the one we counted in SC"O"RE
+
   // Set initial position of pacman
-  pacman_x = 13;
+  pacman_x = 19;
   pacman_y = 17;
 }
 
 void get_ready() {
-  draw_set_pos2(18, 13);
+  draw_set_pos2(30, 13);
   Serial.print("G E T   R E A D Y !");
   delay(2000);
-  draw_set_pos2(18, 13);
+  draw_set_pos2(30, 13);
   Serial.print("                   ");
 }
+
+void press_to_start() {
+  draw_set_pos2(29, 13);
+  Serial.print("P R E S S   A   K E Y");
+  // Wait for input - properly block until a key is pressed
+  while (Serial.available() <= 0) {
+    // Keep waiting until data is available
+  }
+  Serial.read(); // Read and discard the character
+  draw_set_pos2(29, 13);
+  Serial.print("                     ");
+}
+
+void load_high_score() {
+  EEPROM.get(EEPROM_HIGH_SCORE_ADDR, player_high_score);
+  // If EEPROM is uninitialized, it will contain 0xFFFFFFFF (-1 as signed long)
+  // Reset to 0 if invalid
+  if (player_high_score < 0) {
+    player_high_score = 0;
+  }
+}
+
+void save_high_score() {
+  EEPROM.put(EEPROM_HIGH_SCORE_ADDR, player_high_score);
+}
+
+void game_over() {
+  draw_set_pos2(30, 11);
+  Serial.print("G A M E     O V E R");
+  delay(2000);
+}
+
 
 void init_ghosts() {
 
   ghost_mode = SCATTER;
 
   // Red Ghost
-  ghost_x[BLINKY] = 14;
-  ghost_y[BLINKY] = 9;
-  ghost_scatter_target_x[BLINKY] = 25; // Third block from top right
+  ghost_x[BLINKY] = 20;
+  ghost_y[BLINKY] = 10;
+  ghost_scatter_target_x[BLINKY] = 34; // Third block from top right
   ghost_scatter_target_y[BLINKY] = 0;
   ghost_target_x[BLINKY] = ghost_scatter_target_x[BLINKY];
   ghost_target_y[BLINKY] = ghost_scatter_target_y[BLINKY];
@@ -154,10 +204,11 @@ void init_ghosts() {
   ghost_speed[BLINKY] = 0.75;
   ghost_update_counter[BLINKY] = 0;
   ghost_status[BLINKY] = ACTIVE;
+  ghost_wait_timer[BLINKY] = 0;
 
   // Pink Ghost
-  ghost_x[PINKY] = 14;
-  ghost_y[PINKY] = 9;
+  ghost_x[PINKY] = 20;
+  ghost_y[PINKY] = 10;
   ghost_scatter_target_x[PINKY] = 2; // Third block from top left
   ghost_scatter_target_y[PINKY] = 0;
   ghost_target_x[PINKY] = ghost_scatter_target_x[PINKY];
@@ -167,11 +218,12 @@ void init_ghosts() {
   ghost_speed[PINKY] = 0.75;
   ghost_update_counter[PINKY] = 0;
   ghost_status[PINKY] = ACTIVE;
+  ghost_wait_timer[PINKY] = 0;
 
   // Blue Ghost
-  ghost_x[INKY] = 14;
-  ghost_y[INKY] = 9;
-  ghost_scatter_target_x[INKY] = 27; // Bottom right
+  ghost_x[INKY] = 20;
+  ghost_y[INKY] = 10;
+  ghost_scatter_target_x[INKY] = 37; // Bottom right
   ghost_scatter_target_y[INKY] = 23;
   ghost_target_x[INKY] = ghost_scatter_target_x[INKY];
   ghost_target_y[INKY] = ghost_scatter_target_y[INKY];
@@ -180,10 +232,11 @@ void init_ghosts() {
   ghost_speed[INKY] = 0.75;
   ghost_update_counter[INKY] = 0;
   ghost_status[INKY] = ACTIVE;
+  ghost_wait_timer[INKY] = 0;
 
   // Yellow Ghost
-  ghost_x[CLYDE] = 14;
-  ghost_y[CLYDE] = 9;
+  ghost_x[CLYDE] = 20;
+  ghost_y[CLYDE] = 10;
   ghost_scatter_target_x[CLYDE] = 0; // Bottom left
   ghost_scatter_target_y[CLYDE] = 23;
   ghost_target_x[CLYDE] = ghost_scatter_target_x[CLYDE];
@@ -193,6 +246,7 @@ void init_ghosts() {
   ghost_speed[CLYDE] = 0.75;
   ghost_update_counter[CLYDE] = 0;
   ghost_status[CLYDE] = ACTIVE;
+  ghost_wait_timer[CLYDE] = 0;
 
 }
 
@@ -200,13 +254,40 @@ void draw_clear_screen() {
   Serial.print("\x1B[2J");
 }
 
+void draw_high_score() {
+  draw_set_pos2(48, 0);
+  Serial.print(player_high_score);
+}
+
+
 void draw_score() {
   if (player_score != player_score_previous) {
-    draw_set_pos2(6, 0);
+    draw_set_pos2(16, 0);
     Serial.print(player_score);
+    Serial.print(" : ");
+    Serial.print(dots_eaten);
+    Serial.print(" : ");
+    Serial.print(total_dots);
     player_score_previous = player_score;
+    if (player_score > player_high_score) {
+      player_high_score = player_score;
+      draw_high_score();
+    }
+    
+    // Check for free life every 10,000 points
+    if (player_score >= next_life_score) {
+      lives++;
+      next_life_score += 10000;
+      draw_lives();
+    }
   }
 }
+
+void draw_lives() {
+  draw_set_pos2(16, 23);
+  Serial.print(lives);
+}
+
 
 void draw_set_pos(byte x, byte y) {
   Serial.print("\x1B[");
@@ -226,18 +307,45 @@ void draw_set_pos2(byte x, byte y) {
 
 void setup() {
   Serial.begin(9600);
+  load_high_score();
   init_playfield();
   init_ghosts();
   draw_clear_screen();
   Serial.print("\x1B[?25l"); // Hide cursor
   Serial.print("\x1B[1;1H"); // Home cursor
   draw_background();
+  draw_lives();
+  press_to_start();
   get_ready();
   previousMillis = millis();
 }
 
-boolean check_valid_move(byte x, byte y) {
+boolean check_valid_move(byte x, byte y, int8_t who, int8_t direction) {
   // Checks if the tile is a valid spot to move to
+
+  // Special case for house
+
+  if (y==10 && (x == 19 || x == 20)) {
+    if (who == PACMAN) {
+      return false; // Pacman can't move into house
+    }
+    if (direction == DIR_LEFT || direction == DIR_RIGHT) {
+      return false; // Can't move left or right in the door
+    }
+    if (ghost_status[who] == EATEN && direction == DIR_UP) {
+      return false; // Eaten ghosts can't move out of house
+    }
+    if (ghost_status[who] != EATEN && direction == DIR_DOWN) {
+      return false; // Normal ghosts can't move into house
+    }
+  }
+
+  // Special case for portal, only PACMAN can pass through
+  if (who != PACMAN && y==11 && (x == 8 || x == 31 )) {
+    return false;
+  }
+
+  
   if (game_field[x][y] == FIELD_BLOCKED) {
     return false;
   }
@@ -312,9 +420,11 @@ void move_ghost(byte ghost_number) {
   }
   else if (ghost_mode == FRIGHT) {
     // Draw frightened ghosts differently
-    Serial.print(char(ghost_number + 65));
+    Serial.print("8");
+    //Serial.print(char(ghost_number + 65));
   } else {
-    Serial.print(ghost_number);
+    //Serial.print(ghost_number);
+    Serial.print("0");
   }
 
   check_collision_ghost(ghost_number);
@@ -350,8 +460,8 @@ void move_ghost(byte ghost_number) {
     ghost_direction[ghost_number] = ghost_planned_direction[ghost_number];
   }
 
-  draw_set_pos2(40 + ghost_number * 3, 23);
-  Serial.print(ghost_direction[ghost_number]);
+  //draw_set_pos2(40 + ghost_number * 3, 23);
+  //Serial.print(ghost_direction[ghost_number]);
 
   /*
     switch (ghost_direction[ghost_number]) {
@@ -403,10 +513,10 @@ void move_ghost(byte ghost_number) {
   //Serial.print("|"); // Debug
 
   // Weigh blocked moves with a weight of 1000
-  weight_up += !check_valid_move(next_x, next_y - 1) * 1000;
-  weight_left += !check_valid_move(next_x - 1, next_y) * 1000;
-  weight_down += !check_valid_move(next_x, next_y + 1) * 1000;
-  weight_right += !check_valid_move(next_x + 1, next_y) * 1000;
+  weight_up += !check_valid_move(next_x, next_y - 1, ghost_number, DIR_UP) * 1000;
+  weight_left += !check_valid_move(next_x - 1, next_y, ghost_number, DIR_LEFT) * 1000;
+  weight_down += !check_valid_move(next_x, next_y + 1, ghost_number, DIR_DOWN) * 1000;
+  weight_right += !check_valid_move(next_x + 1, next_y, ghost_number, DIR_RIGHT) * 1000;
 
   int ghost_behaviour = ghost_mode; // Default to global ghost mode
   if (ghost_status[ghost_number] == EATEN || ghost_status[ghost_number] == WAIT) {
@@ -417,12 +527,18 @@ void move_ghost(byte ghost_number) {
   switch (ghost_behaviour) {
     case EATEN:
       // Ghost is heading home
-      ghost_target_x[ghost_number] = 13;
-      ghost_target_y[ghost_number] = 9;
+      ghost_target_x[ghost_number] = 19;
+      ghost_target_y[ghost_number] = 11;
+      // Check if ghost is back home
+      if (ghost_y[ghost_number]==11 && (ghost_x[ghost_number]>17 && ghost_x[ghost_number]<21)) {
+        ghost_status[ghost_number]=WAIT;
+        ghost_wait_timer[ghost_number] = 3000;
+      }
       break;
     case WAIT:
-      ghost_target_x[ghost_number] = 13;
-      ghost_target_y[ghost_number] = 9;
+      ghost_target_x[ghost_number] = 19;
+      ghost_target_y[ghost_number] = 11;
+      // Check if wait timer is over is done in main loop
       break;
     case SCATTER:
       // In scatter mode, all ghosts does the same thing, they try to get to their 'home' positions
@@ -507,7 +623,7 @@ void move_ghost(byte ghost_number) {
   // Check limits for target
 
   if (ghost_target_x[ghost_number] < 0) ghost_target_x[ghost_number] = 0;
-  if (ghost_target_x[ghost_number] > 27) ghost_target_x[ghost_number] = 27;
+  if (ghost_target_x[ghost_number] > 37) ghost_target_x[ghost_number] = 37;
   if (ghost_target_y[ghost_number] < 0) ghost_target_x[ghost_number] = 0;
   if (ghost_target_y[ghost_number] > 23) ghost_target_y[ghost_number] = 23;
 
@@ -633,53 +749,66 @@ void loop() {
     byte new_pacman_y = pacman_y;
 
     // Check if we can switch to the requested (pending direction right now)
-
-    switch (pacman_planned_direction) {
-      case DIR_RIGHT :
-        if (check_valid_move(pacman_x + 1, pacman_y)) {
-          pacman_direction = pacman_planned_direction;
-        }
-        break;
-      case DIR_LEFT :
-        if (check_valid_move(pacman_x - 1, pacman_y)) {
-          pacman_direction = pacman_planned_direction;
-        }
-        break;
-      case DIR_UP :
-        if (check_valid_move(pacman_x, pacman_y - 1)) {
-          pacman_direction = pacman_planned_direction;
-        }
-        break;
-      case DIR_DOWN :
-        if (check_valid_move(pacman_x, pacman_y + 1)) {
-          pacman_direction = pacman_planned_direction;
-        }
-        break;
+    
+    if (pacman_y == 11 && (pacman_x < 8 || pacman_x > 31) ) {
+      // If we are in the portal tunnel, we can't change directions
+    } else {
+      switch (pacman_planned_direction) {
+        case DIR_RIGHT :
+          if (check_valid_move(pacman_x + 1, pacman_y, PACMAN, DIR_RIGHT)) {
+            pacman_direction = pacman_planned_direction;
+          }
+          break;
+        case DIR_LEFT :
+          if (check_valid_move(pacman_x - 1, pacman_y, PACMAN, DIR_LEFT)) {
+            pacman_direction = pacman_planned_direction;
+          }
+          break;
+        case DIR_UP :
+          if (check_valid_move(pacman_x, pacman_y - 1, PACMAN, DIR_UP)) {
+            pacman_direction = pacman_planned_direction;
+          }
+          break;
+        case DIR_DOWN :
+          if (check_valid_move(pacman_x, pacman_y + 1, PACMAN, DIR_DOWN)) {
+            pacman_direction = pacman_planned_direction;
+          }
+          break;
+      }
     }
 
     // Check if we can continue moving in the current direction
     switch (pacman_direction) {
       case DIR_RIGHT :
-        if (check_valid_move(pacman_x + 1, pacman_y)) {
+        if (check_valid_move(pacman_x + 1, pacman_y, PACMAN, DIR_RIGHT)) {
           new_pacman_x = pacman_x + 1;
         }
         break;
       case DIR_LEFT :
-        if (check_valid_move(pacman_x - 1, pacman_y)) {
+        if (check_valid_move(pacman_x - 1, pacman_y, PACMAN, DIR_LEFT)) {
           new_pacman_x = pacman_x - 1;
         }
         break;
       case DIR_UP :
-        if (check_valid_move(pacman_x, pacman_y - 1)) {
+        if (check_valid_move(pacman_x, pacman_y - 1, PACMAN, DIR_UP)) {
           new_pacman_y = pacman_y - 1;
         }
         break;
       case DIR_DOWN :
-        if (check_valid_move(pacman_x, pacman_y + 1)) {
+        if (check_valid_move(pacman_x, pacman_y + 1, PACMAN, DIR_DOWN)) {
           new_pacman_y = pacman_y + 1;
         }
         break;
     }
+
+    // Teleport check
+    if (new_pacman_y == 11 && new_pacman_x < 3) {
+      new_pacman_x = 37;
+    }
+    else if (new_pacman_y == 11 && new_pacman_x > 36) {
+      new_pacman_x = 2;
+    }
+
     if (new_pacman_x != pacman_x || new_pacman_y != pacman_y) {
       // Erase from old position
       draw_set_pos(pacman_x, pacman_y);
@@ -730,6 +859,7 @@ void loop() {
     fright_timer = 0;
   }
 
+
   // Set ghost's mode
   if (fright_timer > 0) {
     ghost_mode = FRIGHT;
@@ -767,17 +897,30 @@ void loop() {
       } else {
         ghost_speed[i] = 0.75;
       }
+      
     }
+    /*
     switch (ghost_mode) {
       case CHASE   : Serial.print("CHASE  "); break;
       case SCATTER : Serial.print("SCATTER"); break;
       case FRIGHT  : Serial.print("FRIGHT "); break;
     }
+      */
     previous_ghost_mode = ghost_mode;
   }
 
-  // Move the ghosts
+  // Move the ghosts and update timers
   for (int i = 0; i < 4; i++) {
+    // Handle wait timer
+    if (ghost_wait_timer[i] > elapsedMillis) {
+      ghost_wait_timer[i] -= elapsedMillis;
+    } else {
+      ghost_wait_timer[i] = 0;
+      if (ghost_status[i] == WAIT) {
+        ghost_status[i]=ACTIVE;
+      }
+    }
+    // Move ghosts
     ghost_update_counter[i] += elapsedMillis;
     float ghost_move_time = 1000.0 / (BASE_SPEED * ghost_speed[i]);
     if (ghost_update_counter[i] >= ghost_move_time) {
@@ -788,8 +931,39 @@ void loop() {
 
   draw_score();
 
+  if (dots_eaten >= total_dots) {
+    // Reset the board
+    level+=1;
+    init_playfield();
+    init_ghosts();
+    draw_clear_screen();
+    draw_background();
+    draw_lives();
+    pacman_x = 19;
+    pacman_y = 17;
+    pacman_direction = DIR_LEFT;
+    pacman_planned_direction = DIR_LEFT;
+    player_status = PLAYER_ALIVE;
+    draw_set_pos(pacman_x, pacman_y);
+    Serial.print("@");
+    delay(100);
+    draw_set_pos(pacman_x, pacman_y);
+    Serial.print(" ");
+    delay(100);
+    draw_set_pos(pacman_x, pacman_y);
+    Serial.print("@");
+    delay(250);
+    get_ready();
+    scatter_chase_timer = 0;
+    currentMillis = millis();
+    previousMillis = currentMillis;
+  }
+
   // Handle death
   if (player_status == PLAYER_DEAD) {
+    // Subtract a life
+    lives -=1;
+    draw_lives();
     // Erase ghosts
     for (int i = 0; i < 4; i++) {
       erase_ghost(i);
@@ -814,7 +988,7 @@ void loop() {
     delay(100);
     draw_set_pos(pacman_x, pacman_y);
     Serial.print(" ");
-    pacman_x = 13;
+    pacman_x = 19;
     pacman_y = 17;
     pacman_direction = DIR_LEFT;
     pacman_planned_direction = DIR_LEFT;
@@ -829,7 +1003,9 @@ void loop() {
     Serial.print("@");
     delay(250);
     init_ghosts();
-    get_ready();
+    if (lives) {
+      get_ready();
+    }
     scatter_chase_timer = 0;
     currentMillis = millis();
     previousMillis = currentMillis;
@@ -843,14 +1019,14 @@ void loop() {
     if (TPS_update_counter >= 1000) {
       TPS = -1;
     }
-    draw_set_pos2(4, 23);
-    Serial.print("[");
-    Serial.print(TPS);
-    Serial.print("]");
-    draw_set_pos2(20, 23);
-    Serial.print("[");
-    Serial.print(scatter_chase_timer / 1000);
-    Serial.print("]     ");
+    //draw_set_pos2(4, 23);
+    //Serial.print("[");
+    //Serial.print(TPS);
+    //Serial.print("]");
+    //draw_set_pos2(20, 23);
+    //Serial.print("[");
+    //Serial.print(scatter_chase_timer / 1000);
+    //Serial.print("]     ");
     TPS = 0;
   }
 
@@ -870,4 +1046,25 @@ void loop() {
   Serial.flush();
   delay(10);
   //draw_clear_screen();
+
+  // Check for game over
+  if (lives == 0) {
+    save_high_score();
+    level = 1;
+    lives = 3;
+    player_score = 0;
+    next_life_score = 10000; // Reset life threshold
+    game_over();
+    press_to_start();
+    init_playfield();
+    init_ghosts();
+    draw_clear_screen();
+    Serial.print("\x1B[?25l"); // Hide cursor
+    Serial.print("\x1B[1;1H"); // Home cursor
+    draw_background();
+    draw_lives();
+    get_ready();
+
+    previousMillis = millis();
+  }
 }
